@@ -35,13 +35,20 @@ def _get_bearer_token():
 
 def _get_memberships(user_id):
     memberships = (
-        MemberProfile.query.filter_by(user_id=user_id, is_active=True)
+        MemberProfile.query
+        .filter_by(user_id=user_id, is_active=True)
         .all()
     )
     return [
         {
+            "member_id": membership.id,
             "chama_id": membership.chama_id,
+            "chama_name": membership.chama.name,
             "role": membership.role,
+            "joined_date": (
+                membership.joined_date.isoformat()
+                if membership.joined_date else None
+            ),
         }
         for membership in memberships
     ]

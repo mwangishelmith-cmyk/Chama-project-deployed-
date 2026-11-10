@@ -35,6 +35,7 @@ class User(BaseModel):
     is_super_admin = db.Column(db.Boolean, default=False, nullable=False)
     last_login = db.Column(db.DateTime, nullable=True)
     email_verified = db.Column(db.Boolean, default=False, nullable=False)
+    # public_key = db.Column(db.Text, nullable=True) 
 
     member_profiles = db.relationship("MemberProfile", back_populates="user", cascade="all, delete-orphan")
     chama_creation_requests = db.relationship("ChamaCreationRequest", back_populates="requested_by_user", foreign_keys="ChamaCreationRequest.requested_by", cascade="all, delete-orphan")
@@ -144,6 +145,8 @@ class ChamaAccount(BaseModel):
     institution_name = db.Column(db.String(255), nullable=True)
     account_type = db.Column(db.String(50), nullable=False)
     account_number = db.Column(db.String(100), nullable=True)
+    # backend/models.py
+    account_number_encrypted = db.Column(db.Text, nullable=True)
     opening_balance = db.Column(db.Numeric(12, 2), nullable=True)
     current_balance = db.Column(db.Numeric(12, 2), nullable=True)
     last_reconciled_date = db.Column(db.DateTime, nullable=True)
@@ -167,7 +170,7 @@ class LedgerEntry(BaseModel):
     amount = db.Column(db.Numeric(12, 2), nullable=False)
     fine_amount = db.Column(db.Numeric(12, 2), nullable=True)
     reference = db.Column(db.String(255), nullable=True)
-    sequence_number = db.Column(db.Integer, nullable=True)
+    sequence_number = db.Column(db.Integer, nullable=False)
     transaction_date = db.Column(db.DateTime, nullable=True)
     due_date = db.Column(db.DateTime, nullable=True)
     is_paid = db.Column(db.Boolean, default=False, nullable=False)
@@ -218,3 +221,17 @@ class AuditTrail(BaseModel):
     chama = db.relationship("Chama", back_populates="audit_trails")
     member = db.relationship("MemberProfile", back_populates="audit_trails")
     ledger_entry = db.relationship("LedgerEntry", back_populates="audit_trails")
+
+
+# class EncryptedKeyStore(BaseModel):
+#     """Secure storage for encrypted cryptographic keys."""
+#     __tablename__ = "encrypted_key_store"
+    
+#     chama_id = db.Column(db.String(36), db.ForeignKey("chamas.id"), nullable=False)
+#     key_type = db.Column(db.String(50), nullable=False)  # 'signature', 'encryption'
+#     encrypted_data = db.Column(db.Text, nullable=False)  # JSON with encrypted key data
+#     key_version = db.Column(db.Integer, default=1)
+    
+#     __table_args__ = (
+#         db.UniqueConstraint('chama_id', 'key_type', name='uq_chama_key_type'),
+#     )

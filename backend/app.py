@@ -25,7 +25,16 @@ def create_app(config_class=None):
     db.init_app(app)
     migrate.init_app(app, db)
     jwt.init_app(app)
-    CORS(app, origins=["http://localhost:8080", "https://your-frontend.com"])
+    CORS(
+        app,
+        origins=[
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+            "http://localhost:8080",
+            "https://flappiest-eliseo-orthodoxly.ngrok-free.dev",
+            "https://your-frontend.com",
+        ],
+    )
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(ledger_bp)

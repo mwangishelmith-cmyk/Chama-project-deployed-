@@ -911,3 +911,218 @@ def reject_join_request(chama_id, request_id, current_user=None):
     except SQLAlchemyError:
         db.session.rollback()
         return jsonify({"message": "Could not reject join request"}), 500
+
+
+@tenant_bp.route("/chamas/<chama_id>/members", methods=["GET"])
+@token_required
+def list_members(chama_id, current_user=None):
+    user, membership, error_response = _actor_membership(
+        current_user,
+        chama_id,
+    )
+    if error_response:
+        return error_response
+
+    members = (
+        MemberProfile.query
+        .join(User, User.id == MemberProfile.user_id)
+        .filter(
+            MemberProfile.chama_id == chama_id,
+            MemberProfile.is_active.is_(True),
+        )
+        .order_by(User.full_name.asc())
+        .all()
+    )
+
+    return jsonify([
+        {
+            "member_id": member.id,
+            "user_id": member.user_id,
+            "full_name": member.user.full_name,
+            "email": member.user.email,
+            "phone_number": member.user.phone_number,
+            "role": member.role,
+            "joined_date": (
+                member.joined_date.isoformat()
+                if member.joined_date else None
+            ),
+            "is_active": member.is_active,
+        }
+        for member in members
+    ]), 200    
+
+@tenant_bp.route("/chamas/directory", methods=["GET"])
+@token_required
+def chama_directory(current_user=None):
+    user = _resolve_current_user(current_user)
+
+    joined_ids = {
+        membership.chama_id
+        for membership in MemberProfile.query.filter_by(
+            user_id=user.id,
+            is_active=True,
+        ).all()
+    }
+
+    chamas = (
+        Chama.query
+        .filter(Chama.is_active.is_(True))
+        .order_by(Chama.name.asc())
+        .all()
+    )
+
+    return jsonify([
+        {
+            "chama_id": chama.id,
+            "name": chama.name,
+            "description": chama.description,
+        }
+        for chama in chamas
+        if chama.id not in joined_ids
+    ]), 200
+
+# backend/routes/tenant.py
+
+@tenant_bp.route("/chamas/<chama_id>/settings", methods=["GET"])
+@token_required
+def get_chama_settings(chama_id, current_user=None):
+    user, membership, error_response = _actor_membership(
+        current_user,
+        chama_id,
+    )
+    if error_response:
+        return error_response
+
+    chama = db.session.get(Chama, chama_id)
+    if chama is None:
+        return jsonify({"message": "Chama not found"}), 404
+
+    return jsonify({
+        "default_contribution_amount": str(
+            chama.default_contribution_amount or 0
+        ),
+        "contribution_frequency": chama.contribution_frequency,
+        "late_fine_amount": str(chama.late_fine_amount or 0),
+        "grace_period_days": chama.late_fine_days_grace or 0,
+        "contribution_due_day": chama.contribution_due_day,
+    }), 200
+
+# backend/routes/tenant.py
+
+@tenant_bp.route("/chamas/<chama_id>/settings", methods=["PUT"])
+@token_required
+def update_chama_settings(chama_id, current_user=None):
+    user, membership, error_response = _actor_membership(
+        current_user,
+        chama_id,
+        allowed_roles={"Chairperson", "Treasurer"},
+    )
+    if error_response:
+        return error_response
+
+    chama = db.session.get(Chama, chama_id)
+    if chama is None:
+        return jsonify({"message": "Chama not found"}), 404
+
+    payload = request.get_json(silent=True) or {}
+
+    if "default_contribution_amount" in payload:
+        chama.default_contribution_amount = _parse_decimal(
+            payload["default_contribution_amount"]
+        )
+
+    if "contribution_frequency" in payload:
+        chama.contribution_frequency = payload["contribution_frequency"]
+
+    if "late_fine_amount" in payload:
+        chama.late_fine_amount = _parse_decimal(payload["late_fine_amount"])
+
+    if "grace_period_days" in payload:
+        chama.late_fine_days_grace = int(payload["grace_period_days"] or 0)
+
+    db.session.commit()
+
+    return jsonify({
+        "updated_settings": {
+            "default_contribution_amount": str(
+                chama.default_contribution_amount or 0
+            ),
+            "contribution_frequency": chama.contribution_frequency,
+            "late_fine_amount": str(chama.late_fine_amount or 0),
+            "grace_period_days": chama.late_fine_days_grace or 0,
+        }
+    }), 200
+
+# backend/routes/tenant.py or backend/routes/ledger.py
+
+@tenant_bp.route("/chamas/<chama_id>/audit-trail", methods=["GET"])
+@token_required
+def chama_audit_trail(chama_id, current_user=None):
+    user, membership, error_response = _actor_membership(
+        current_user,
+        chama_id,
+        allowed_roles={"Chairperson", "Treasurer"},
+    )
+    if error_response:
+        return error_response
+
+    events = (
+        AuditTrail.query
+        .filter_by(chama_id=chama_id)
+        .order_by(AuditTrail.timestamp.desc())
+        .limit(500)
+        .all()
+    )
+
+    return jsonify([
+        {
+            "id": event.id,
+            "created_at": (
+                event.timestamp.isoformat()
+                if event.timestamp else None
+            ),
+            "actor_id": event.user_id,
+            "action": event.action,
+            "details": event.change_summary,
+            "table_name": event.table_name,
+            "record_id": event.record_id,
+        }
+        for event in events
+    ]), 200
+
+# backend/routes/tenant.py
+
+@tenant_bp.route("/admin/audit-trails", methods=["GET"])
+@token_required
+def admin_audit_trails(current_user=None):
+    user = _resolve_current_user(current_user)
+
+    if user is None:
+        return jsonify({"message": "Unauthorized"}), 401
+
+    if not user.is_super_admin:
+        return jsonify({"message": "Access denied: super admin only"}), 403
+
+    events = (
+        AuditTrail.query
+        .order_by(AuditTrail.timestamp.desc())
+        .limit(500)
+        .all()
+    )
+
+    return jsonify([
+        {
+            "id": event.id,
+            "created_at": (
+                event.timestamp.isoformat()
+                if event.timestamp else None
+            ),
+            "actor_id": event.user_id,
+            "chama_id": event.chama_id,
+            "action": event.action,
+            "table_name": event.table_name,
+            "record_id": event.record_id,
+            "details": event.change_summary,
+        }
+        for event in events
+    ]), 200
