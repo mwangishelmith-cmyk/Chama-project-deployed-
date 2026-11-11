@@ -1,8 +1,8 @@
-"""adding the core models
+"""Initial database schema
 
-Revision ID: 32c0bd577940
+Revision ID: a9a5ab71f4d1
 Revises: 
-Create Date: 2026-07-01 14:00:23.753327
+Create Date: 2026-11-11 06:41:17.505148
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = '32c0bd577940'
+revision = 'a9a5ab71f4d1'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -34,6 +34,23 @@ def upgrade():
     with op.batch_alter_table('users', schema=None) as batch_op:
         batch_op.create_index(batch_op.f('ix_users_email'), ['email'], unique=True)
 
+    op.create_table('chama_creation_requests',
+    sa.Column('requested_by', sa.String(length=36), nullable=False),
+    sa.Column('name', sa.String(length=255), nullable=False),
+    sa.Column('description', sa.Text(), nullable=True),
+    sa.Column('chama_type', sa.String(length=50), nullable=False),
+    sa.Column('default_contribution_amount', sa.Numeric(precision=12, scale=2), nullable=True),
+    sa.Column('creator_role', sa.String(length=50), nullable=False),
+    sa.Column('status', sa.String(length=20), nullable=False),
+    sa.Column('approved_by', sa.String(length=36), nullable=True),
+    sa.Column('approved_at', sa.DateTime(), nullable=True),
+    sa.Column('id', sa.String(length=36), nullable=False),
+    sa.Column('created_at', sa.DateTime(), nullable=False),
+    sa.Column('updated_at', sa.DateTime(), nullable=False),
+    sa.ForeignKeyConstraint(['approved_by'], ['users.id'], ),
+    sa.ForeignKeyConstraint(['requested_by'], ['users.id'], ),
+    sa.PrimaryKeyConstraint('id')
+    )
     op.create_table('chamas',
     sa.Column('name', sa.String(length=255), nullable=False),
     sa.Column('description', sa.Text(), nullable=True),
@@ -58,16 +75,38 @@ def upgrade():
     sa.Column('institution_name', sa.String(length=255), nullable=True),
     sa.Column('account_type', sa.String(length=50), nullable=False),
     sa.Column('account_number', sa.String(length=100), nullable=True),
+    sa.Column('account_number_encrypted', sa.Text(), nullable=True),
     sa.Column('opening_balance', sa.Numeric(precision=12, scale=2), nullable=True),
     sa.Column('current_balance', sa.Numeric(precision=12, scale=2), nullable=True),
     sa.Column('last_reconciled_date', sa.DateTime(), nullable=True),
     sa.Column('reconciliation_status', sa.String(length=50), nullable=True),
     sa.Column('is_active', sa.Boolean(), nullable=False),
+    sa.Column('is_primary', sa.Boolean(), nullable=False),
     sa.Column('id', sa.String(length=36), nullable=False),
     sa.Column('created_at', sa.DateTime(), nullable=False),
     sa.Column('updated_at', sa.DateTime(), nullable=False),
     sa.ForeignKeyConstraint(['chama_id'], ['chamas.id'], ),
     sa.PrimaryKeyConstraint('id')
+    )
+    with op.batch_alter_table('chama_accounts', schema=None) as batch_op:
+        batch_op.create_index('uq_chama_primary_account', ['chama_id'], unique=True, sqlite_where=sa.text('is_primary = 1'))
+
+    op.create_table('join_requests',
+    sa.Column('user_id', sa.String(length=36), nullable=False),
+    sa.Column('chama_id', sa.String(length=36), nullable=False),
+    sa.Column('status', sa.String(length=20), nullable=False),
+    sa.Column('requested_at', sa.DateTime(), nullable=False),
+    sa.Column('reviewed_at', sa.DateTime(), nullable=True),
+    sa.Column('reviewed_by', sa.String(length=36), nullable=True),
+    sa.Column('remarks', sa.Text(), nullable=True),
+    sa.Column('id', sa.String(length=36), nullable=False),
+    sa.Column('created_at', sa.DateTime(), nullable=False),
+    sa.Column('updated_at', sa.DateTime(), nullable=False),
+    sa.ForeignKeyConstraint(['chama_id'], ['chamas.id'], ),
+    sa.ForeignKeyConstraint(['reviewed_by'], ['users.id'], ),
+    sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('user_id', 'chama_id', 'status', name='uq_active_join_request')
     )
     op.create_table('member_profiles',
     sa.Column('user_id', sa.String(length=36), nullable=False),
@@ -94,7 +133,7 @@ def upgrade():
     sa.Column('amount', sa.Numeric(precision=12, scale=2), nullable=False),
     sa.Column('fine_amount', sa.Numeric(precision=12, scale=2), nullable=True),
     sa.Column('reference', sa.String(length=255), nullable=True),
-    sa.Column('sequence_number', sa.Integer(), nullable=True),
+    sa.Column('sequence_number', sa.Integer(), nullable=False),
     sa.Column('transaction_date', sa.DateTime(), nullable=True),
     sa.Column('due_date', sa.DateTime(), nullable=True),
     sa.Column('is_paid', sa.Boolean(), nullable=False),
@@ -111,7 +150,7 @@ def upgrade():
     op.create_table('audit_trails',
     sa.Column('timestamp', sa.DateTime(), nullable=False),
     sa.Column('user_id', sa.String(length=36), nullable=False),
-    sa.Column('chama_id', sa.String(length=36), nullable=False),
+    sa.Column('chama_id', sa.String(length=36), nullable=True),
     sa.Column('member_id', sa.String(length=36), nullable=True),
     sa.Column('role', sa.String(length=100), nullable=True),
     sa.Column('ip_address', sa.String(length=100), nullable=True),
@@ -142,8 +181,13 @@ def downgrade():
     op.drop_table('audit_trails')
     op.drop_table('ledger_entries')
     op.drop_table('member_profiles')
+    op.drop_table('join_requests')
+    with op.batch_alter_table('chama_accounts', schema=None) as batch_op:
+        batch_op.drop_index('uq_chama_primary_account', sqlite_where=sa.text('is_primary = 1'))
+
     op.drop_table('chama_accounts')
     op.drop_table('chamas')
+    op.drop_table('chama_creation_requests')
     with op.batch_alter_table('users', schema=None) as batch_op:
         batch_op.drop_index(batch_op.f('ix_users_email'))
 
