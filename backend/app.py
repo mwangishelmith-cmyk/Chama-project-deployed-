@@ -32,7 +32,7 @@ def create_app(config_class=None):
             "http://127.0.0.1:5173",
             "http://localhost:8080",
             "https://flappiest-eliseo-orthodoxly.ngrok-free.dev",
-            "https://your-frontend.com",
+            "https://chama-project-frontend-webservice.onrender.com",
         ],
     )
 
